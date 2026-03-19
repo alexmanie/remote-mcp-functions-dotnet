@@ -202,11 +202,6 @@ azd env set VNET_ENABLED true
 
 ### Step 3: Deploy
 
-1. Set `DEPLOY_SERVICE` to provision the MCP App `weather` or MCP server `api`: 
-    ```shell
-    azd env set DEPLOY_SERVICE <weather or api> 
-    ```
-
 1. Provision the resources for the app: 
     ```shell
     azd provision
@@ -214,9 +209,12 @@ azd env set VNET_ENABLED true
 
     When prompted, pick your subscription, an Azure region for the resources, and choose `false` to skip creating virtual network resources to simplify the deployment.
 
-1. Deploy the app of your choice app:
+1. Deploy either one service or both:
 
     ```shell
+    # Deploy everything (provisions + deploys both api and weather)
+    azd up
+
     # Deploy only the MCP Tool (with Entra auth)
     azd deploy --service api
 

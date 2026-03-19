@@ -58,14 +58,11 @@ param delegatedPermissions array = ['User.Read']
 param location string
 param vnetEnabled bool
 
-@description('Which service to deploy: api or weather. Only one function app is provisioned per Flex Consumption plan.')
-@allowed(['api', 'weather'])
-param deployService string = 'api'
-
 param apiServiceName string = ''
 param apiUserAssignedIdentityName string = ''
 param applicationInsightsName string = ''
 param appServicePlanName string = ''
+param weatherAppServicePlanName string = ''
 param logAnalyticsName string = ''
 param resourceGroupName string = ''
 param storageAccountName string = ''
@@ -77,10 +74,12 @@ param principalId string = deployer().objectId
 var abbrs = loadJsonContent('./abbreviations.json')
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
 var tags = { 'azd-env-name': environmentName }
-var deployApi = deployService == 'api'
-var deployWeather = deployService == 'weather'
+var deployApi = true
+var deployWeather = true
 var functionAppName = !empty(apiServiceName) ? apiServiceName : '${abbrs.webSitesFunctions}api-${resourceToken}'
 var weatherFunctionAppName = !empty(weatherServiceName) ? weatherServiceName : '${abbrs.webSitesFunctions}weather-${resourceToken}'
+var apiAppServicePlanName = !empty(appServicePlanName) ? appServicePlanName : '${abbrs.webServerFarms}${resourceToken}'
+var weatherPlanName = !empty(weatherAppServicePlanName) ? weatherAppServicePlanName : '${abbrs.webServerFarms}weather-${resourceToken}'
 var deploymentStorageContainerName = 'app-package-${take(functionAppName, 32)}-${take(toLower(uniqueString(functionAppName, resourceToken)), 7)}'
 var weatherDeploymentStorageContainerName = 'app-package-${take(weatherFunctionAppName, 32)}-${take(toLower(uniqueString(weatherFunctionAppName, resourceToken)), 7)}'
 
@@ -117,12 +116,27 @@ module weatherUserAssignedIdentity 'br/public:avm/res/managed-identity/user-assi
   }
 }
 
-// Create an App Service Plan to group applications under the same payment plan and SKU
-module appServicePlan 'br/public:avm/res/web/serverfarm:0.1.1' = {
-  name: 'appserviceplan'
+// Create independent App Service Plans for api and weather Function Apps
+module apiAppServicePlan 'br/public:avm/res/web/serverfarm:0.1.1' = {
+  name: 'api-appserviceplan'
   scope: rg
   params: {
-    name: !empty(appServicePlanName) ? appServicePlanName : '${abbrs.webServerFarms}${resourceToken}'
+    name: apiAppServicePlanName
+    sku: {
+      name: 'FC1'
+      tier: 'FlexConsumption'
+    }
+    reserved: true
+    location: location
+    tags: tags
+  }
+}
+
+module weatherAppServicePlan 'br/public:avm/res/web/serverfarm:0.1.1' = {
+  name: 'weather-appserviceplan'
+  scope: rg
+  params: {
+    name: weatherPlanName
     sku: {
       name: 'FC1'
       tier: 'FlexConsumption'
@@ -141,7 +155,7 @@ module api './app/api.bicep' = if (deployApi) {
     location: location
     tags: tags
     applicationInsightsName: monitoring.outputs.name
-    appServicePlanId: appServicePlan.outputs.resourceId
+    appServicePlanId: apiAppServicePlan.outputs.resourceId
     runtimeName: 'dotnet-isolated'
     runtimeVersion: '10.0'
     storageAccountName: storage.outputs.name
@@ -190,7 +204,7 @@ module weather './app/api.bicep' = if (deployWeather) {
     location: location
     tags: tags
     applicationInsightsName: monitoring.outputs.name
-    appServicePlanId: appServicePlan.outputs.resourceId
+    appServicePlanId: weatherAppServicePlan.outputs.resourceId
     runtimeName: 'dotnet-isolated'
     runtimeVersion: '10.0'
     storageAccountName: storage.outputs.name
@@ -223,9 +237,8 @@ module storage 'br/public:avm/res/storage/storage-account:0.8.3' = {
       bypass: 'AzureServices'
     }
     blobServices: {
-      containers: deployApi ? [
+      containers: [
         {name: deploymentStorageContainerName}
-      ] : [
         {name: weatherDeploymentStorageContainerName}
       ]
     }
